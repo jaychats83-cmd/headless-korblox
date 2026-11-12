@@ -1,9 +1,17 @@
 local SRC = [=====[
 local env = (getgenv and getgenv()) or _G
+
+-- Wait for the game and the local player to exist (fixes early-run nil errors)
+if not game:IsLoaded() then game.Loaded:Wait() end
 local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+while not player do
+	task.wait()
+	player = Players.LocalPlayer
+end
+
 local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
-local player = Players.LocalPlayer
 
 local ASSET_ID = 139607718
 local Y_OFFSET_IDLE = 0.2   -- studs; height when standing still
