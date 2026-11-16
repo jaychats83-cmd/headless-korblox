@@ -1,7 +1,7 @@
 local SRC = [=====[
 local env = (getgenv and getgenv()) or _G
 
--- Wait for the game and the local player to exist (fixes early-run nil errors)
+-- Wait for the game and the local player to exist
 if not game:IsLoaded() then game.Loaded:Wait() end
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
@@ -14,8 +14,9 @@ local RunService = game:GetService("RunService")
 local UIS = game:GetService("UserInputService")
 
 local ASSET_ID = 139607718
-local Y_OFFSET_IDLE = 0.2   -- studs; height when standing still
-local Y_OFFSET_MOVING = 0.5 -- studs; height while walking/running
+local Y_OFFSET_IDLE = 0.2   -- R6 only: studs; height when standing still
+local Y_OFFSET_MOVING = 0.5 -- R6 only: studs; height while walking/running
+local Y_OFFSET_R15 = 0      -- R15 only: studs; raise (+) or lower (-) the leg
 local KILL_KEY = Enum.KeyCode.F6
 
 -- Auto-run handling: a manual run clears the disabled flag,
@@ -93,6 +94,19 @@ if not (pieces.RightUpperLeg and pieces.RightLowerLeg and pieces.RightFoot) then
 	return
 end
 
+local function prepClone(src, size, char)
+	local c = src:Clone()
+	c.Size = size
+	c.Anchored = true
+	c.CanCollide = false
+	c.CanQuery = false
+	c.CanTouch = false
+	c.Massless = true
+	c.Parent = char
+	track(function() c:Destroy() end)
+	return c
+end
+
 local function applyR6(char)
 	local leg = char:WaitForChild("Right Leg", 10)
 	local hum = char:WaitForChild("Humanoid", 10)
@@ -110,15 +124,7 @@ local function applyR6(char)
 	local clones = {}
 	local y = 1
 	for _, p in ipairs(order) do
-		local c = p:Clone()
-		c.Size = p.Size * factor
-		c.Anchored = true
-		c.CanCollide = false
-		c.CanQuery = false
-		c.CanTouch = false
-		c.Massless = true
-		c.Parent = char
-		track(function() c:Destroy() end)
+		local c = prepClone(p, p.Size * factor, char)
 		table.insert(clones, { part = c, offset = CFrame.new(0, y - c.Size.Y / 2, 0) })
 		y -= c.Size.Y
 	end
@@ -141,18 +147,36 @@ local function applyR6(char)
 end
 
 local function applyR15(char)
-	for name, src in pairs(pieces) do
-		local part = char:WaitForChild(name, 10)
-		if part and not unloaded then
-			local oldMesh, oldTex = part.MeshId, part.TextureID
-			track(function()
-				part.MeshId = oldMesh
-				part.TextureID = oldTex
-			end)
-			part.MeshId = src.MeshId
-			part.TextureID = src.TextureID
-		end
+	local names = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+	local pairsList = {}
+
+	for _, name in ipairs(names) do
+		local real = char:WaitForChild(name, 10)
+		if not real or unloaded then return end
+
+		local oldT = real.Transparency
+		track(function() real.Transparency = oldT end)
+		real.Transparency = 1
+
+		-- Match the avatar's scale if it isn't default
+		local src = pieces[name]
+		local scale = real.Size.Y / src.Size.Y
+		local c = prepClone(src, src.Size * scale, char)
+		table.insert(pairsList, { real = real, clone = c })
 	end
+
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		for _, e in ipairs(pairsList) do
+			if not e.real.Parent then
+				conn:Disconnect()
+				return
+			end
+			e.real.Transparency = 1
+			e.clone.CFrame = e.real.CFrame + Vector3.new(0, Y_OFFSET_R15, 0)
+		end
+	end)
+	track(function() conn:Disconnect() end)
 end
 
 local function apply(char)
