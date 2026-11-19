@@ -17,6 +17,7 @@ local ASSET_ID = 139607718
 local Y_OFFSET_IDLE = 0.2   -- R6 only: studs; height when standing still
 local Y_OFFSET_MOVING = 0.5 -- R6 only: studs; height while walking/running
 local Y_OFFSET_R15 = 0      -- R15 only: studs; raise (+) or lower (-) the leg
+local R15_SCALE = 1         -- R15 only: size multiplier (try 0.9 or 0.8 if still too big)
 local KILL_KEY = Enum.KeyCode.F6
 
 -- Auto-run handling: a manual run clears the disabled flag,
@@ -147,8 +148,19 @@ local function applyR6(char)
 end
 
 local function applyR15(char)
+	local hum = char:WaitForChild("Humanoid", 10)
+	if not hum or unloaded then return end
+
+	-- Use the Korblox pieces at their native size, adjusted only by the
+	-- avatar's own body-scale values (1 for a default avatar).
+	local function sv(name)
+		local v = hum:FindFirstChild(name)
+		return v and v.Value or 1
+	end
+	local scale = Vector3.new(sv("BodyWidthScale"), sv("BodyHeightScale"), sv("BodyDepthScale")) * R15_SCALE
+
 	local names = { "RightUpperLeg", "RightLowerLeg", "RightFoot" }
-	local pairsList = {}
+	local entries = {}
 
 	for _, name in ipairs(names) do
 		local real = char:WaitForChild(name, 10)
@@ -158,16 +170,14 @@ local function applyR15(char)
 		track(function() real.Transparency = oldT end)
 		real.Transparency = 1
 
-		-- Match the avatar's scale if it isn't default
 		local src = pieces[name]
-		local scale = real.Size.Y / src.Size.Y
 		local c = prepClone(src, src.Size * scale, char)
-		table.insert(pairsList, { real = real, clone = c })
+		table.insert(entries, { real = real, clone = c })
 	end
 
 	local conn
 	conn = RunService.RenderStepped:Connect(function()
-		for _, e in ipairs(pairsList) do
+		for _, e in ipairs(entries) do
 			if not e.real.Parent then
 				conn:Disconnect()
 				return
